@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/">
+    <file>theme/dark.qss</file>
+    <file>theme/light.qss</file>
+    <file>icons/cd-debugtool.svg</file>
+  </qresource>
+</RCC>

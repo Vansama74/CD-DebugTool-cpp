@@ -1,0 +1,138 @@
+/* CD DebugTool — GitHub Light theme */
+QWidget {
+    background-color: #FFFFFF;
+    color: #24292F;
+    font-family: "Noto Sans CJK SC";
+}
+
+QMainWindow, QDialog {
+    background-color: #FFFFFF;
+}
+
+QGroupBox {
+    border: 1px solid #D0D7DE;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 6px;
+    background-color: #FFFFFF;
+    color: #24292F;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 4px;
+    color: #24292F;
+    background-color: transparent;
+}
+
+QPushButton {
+    background-color: #F6F8FA;
+    color: #24292F;
+    border: 1px solid #D0D7DE;
+    border-radius: 6px;
+    padding: 6px 14px;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background-color: #F3F4F6;
+    border-color: #8C959F;
+}
+
+QPushButton:pressed {
+    background-color: #EBECF0;
+}
+
+QPushButton:disabled {
+    color: #8C959F;
+    background-color: #F6F8FA;
+    border-color: #D0D7DE;
+}
+
+QPushButton#primaryBtn {
+    background-color: #0969DA;
+    border-color: #0969DA;
+    color: #FFFFFF;
+}
+
+QPushButton#primaryBtn:hover {
+    background-color: #218BFF;
+}
+
+QPushButton#dangerBtn {
+    background-color: #D1242F;
+    border-color: #D1242F;
+    color: #FFFFFF;
+}
+
+QPushButton#successBtn {
+    background-color: #1A7F37;
+    border-color: #1A7F37;
+    color: #FFFFFF;
+}
+
+QPushButton#warningBtn {
+    background-color: #9A6700;
+    border-color: #9A6700;
+    color: #FFFFFF;
+}
+
+QPushButton#infoBtn {
+    background-color: #0969DA;
+    border-color: #0969DA;
+    color: #FFFFFF;
+}
+
+QComboBox, QLineEdit {
+    background-color: #FFFFFF;
+    color: #24292F;
+    border: 1px solid #D0D7DE;
+    border-radius: 6px;
+    padding: 4px 8px;
+    min-height: 20px;
+    selection-background-color: #0969DA;
+}
+
+QComboBox:focus, QLineEdit:focus {
+    border-color: #0969DA;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    color: #24292F;
+    border: 1px solid #D0D7DE;
+    selection-background-color: #0969DA;
+    selection-color: #FFFFFF;
+}
+
+QLabel {
+    background-color: transparent;
+    color: #24292F;
+}
+
+QLabel#titleLabel {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QLabel#subtitleLabel {
+    font-size: 12px;
+    color: #57606A;
+}
+
+QLabel#statusLabel {
+    color: #57606A;
+}
+
+QStatusBar {
+    background-color: #F6F8FA;
+    color: #57606A;
+    border-top: 1px solid #D0D7DE;
+}

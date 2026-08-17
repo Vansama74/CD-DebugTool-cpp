@@ -1,0 +1,68 @@
+#pragma once
+#include <QByteArray>
+#include <QString>
+#include <QVector>
+#include <QtGlobal>
+
+struct ReportIpInfo {
+    QString ip;
+    QString mask;
+    QString gateway;
+    quint16 appPort = 0;
+    bool valid = false;
+};
+
+struct StatusInfo {
+    quint32 fwSize = 0;
+    quint32 fwCrc = 0;
+    QString version;
+    int upgradeState = -1;
+    bool valid = false;
+};
+
+class IapCommands {
+public:
+    // Host -> device command codes.
+    static constexpr quint32 CMD_REPORT_IP = 0x00004B01u;
+    static constexpr quint32 CMD_SET_IP = 0x00004B02u;
+    static constexpr quint32 CMD_QUERY_STATUS = 0x00004B03u;
+    static constexpr quint32 CMD_ERASE_FW = 0x00004B04u;
+    static constexpr quint32 CMD_TRANSFER_FW = 0x00004B05u;
+    static constexpr quint32 CMD_ENTER_RECOVERY = 0x00004B06u;
+    static constexpr quint32 CMD_REBOOT = 0x00004B07u;
+
+    // Device -> host response codes.
+    static constexpr quint32 RESP_REPORT_IP = 0x0000B401u;
+    static constexpr quint32 RESP_SET_IP = 0x0000B402u;
+    static constexpr quint32 RESP_QUERY_STATUS = 0x0000B403u;
+    static constexpr quint32 RESP_ERASE_FW = 0x0000B404u;
+    static constexpr quint32 RESP_TRANSFER_FW = 0x0000B405u;
+    static constexpr quint32 RESP_ENTER_RECOVERY = 0x0000B406u;
+    static constexpr quint32 RESP_REBOOT = 0x0000B407u;
+
+    // Upgrade state machine values.
+    static constexpr quint32 UPGRADE_STATE_SUCCESS = 0u;
+    static constexpr quint32 UPGRADE_STATE_IN_PROGRESS = 1u;
+    static constexpr quint32 UPGRADE_STATE_FAILED = 2u;
+
+    // Transport configuration.
+    inline static const QString DEFAULT_BROADCAST_IP = QStringLiteral("192.168.114.200");
+    static constexpr quint16 DEFAULT_PORT = 10011;
+    static constexpr int PAGE_SIZE_WORDS = 256;
+    static constexpr int MAX_PAYLOAD_WORDS = 256;
+
+    static QByteArray buildReportIpRequest();
+    static QByteArray buildSetIpRequest(const QString& ip, const QString& mask,
+                                        const QString& gateway, quint16 port);
+    static QByteArray buildQueryStatusRequest();
+    static QByteArray buildEraseRequest(quint32 firmwareSizeBytes);
+    static QByteArray buildTransferFrame(quint32 seq, const QVector<quint32>& firmwareWords,
+                                         int offset, int pageSize = PAGE_SIZE_WORDS);
+    static QByteArray buildEnterRecoveryRequest();
+    static QByteArray buildRebootRequest();
+
+    static ReportIpInfo parseReportIpResponse(const QVector<quint32>& words);
+    static StatusInfo parseStatusResponse(const QVector<quint32>& words);
+    static bool parseEraseResponse(const QVector<quint32>& words);
+    static QVector<quint32> parseTransferResponse(const QVector<quint32>& words);
+};

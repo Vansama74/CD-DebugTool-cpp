@@ -1,0 +1,8 @@
+Package: cd-debugtool
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Yaoyu <yaoyu@example.com>
+Depends: libqt5core5t64 (>= 5.15), libqt5gui5t64 (>= 5.15), libqt5widgets5t64 (>= 5.15), libqt5serialport5 (>= 5.15), libqt5network5t64 (>= 5.15), libc6 (>= 2.34), libstdc++6
+Section: devel
+Priority: optional
+Description: ChuangDi multi-protocol debug tool (QingHai/IAP/RS485); also supports the three SiChuan fee-display protocols (ETC/MTC/overload)

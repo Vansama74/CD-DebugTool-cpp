@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=CD DebugTool
+Comment=ChuangDi multi-protocol debug tool (QingHai/IAP/RS485)
+Exec=/usr/bin/cd-debugtool
+Icon=cd-debugtool
+Terminal=false
+Categories=Development;Engineering;HardwareSettings;
+Keywords=QingHai;IAP;RS485;CD;Indicator;
+StartupWMClass=cd-debugtool
