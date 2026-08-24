@@ -10,6 +10,7 @@ int runTestScEtc(int argc, char** argv);
 int runTestScMtc(int argc, char** argv);
 int runTestScOl(int argc, char** argv);
 int runTestShanDong(int argc, char** argv);
+int runTestYunNan(int argc, char** argv);
 int runTestConfig(int argc, char** argv);
 int runTestUpgradeEngine(int argc, char** argv);
 
@@ -24,6 +25,7 @@ int main(int argc, char** argv)
     status |= runTestScMtc(argc, argv);
     status |= runTestScOl(argc, argv);
     status |= runTestShanDong(argc, argv);
+    status |= runTestYunNan(argc, argv);
     status |= runTestConfig(argc, argv);
     status |= runTestUpgradeEngine(argc, argv);
     return status;

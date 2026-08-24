@@ -13,6 +13,7 @@
 #include "ui/pages/SiChuanMtcPage.h"
 #include "ui/pages/SiChuanOlPage.h"
 #include "ui/pages/ShanDongPage.h"
+#include "ui/pages/YunNanPage.h"
 
 int main(int argc, char* argv[])
 {
@@ -46,6 +47,8 @@ int main(int argc, char* argv[])
                            [](QWidget* p) { return new SiChuanOlPage(p); } });
     reg.registerProtocol({ QStringLiteral("shandong"), QStringLiteral("山东车道费显协议"),
                            [](QWidget* p) { return new ShanDongPage(p); } });
+    reg.registerProtocol({ QStringLiteral("yunnan"), QStringLiteral("云南费显协议"),
+                           [](QWidget* p) { return new YunNanPage(p); } });
 
     MainWindow window;
     LoginDialog dlg;

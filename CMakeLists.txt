@@ -61,6 +61,9 @@ set(PROJECT_SOURCES
     src/protocol/shandong/ShanDongProtocol.cpp
     src/protocol/shandong/ShanDongProtocol.h
 
+    src/protocol/yunnan/YunNanProtocol.cpp
+    src/protocol/yunnan/YunNanProtocol.h
+
     src/protocol/common/Codec.h
 
     src/transport/SerialTransport.cpp
@@ -100,6 +103,8 @@ set(PROJECT_SOURCES
     src/ui/pages/SiChuanOlPage.h
     src/ui/pages/ShanDongPage.cpp
     src/ui/pages/ShanDongPage.h
+    src/ui/pages/YunNanPage.cpp
+    src/ui/pages/YunNanPage.h
     src/ui/pages/IapPage.cpp
     src/ui/pages/IapPage.h
     src/ui/pages/IapDevicePanel.cpp
@@ -136,6 +141,7 @@ add_executable(cd-debugtool-tests
     tests/test_sc_mtc.cpp
     tests/test_sc_ol.cpp
     tests/test_shandong.cpp
+    tests/test_yunnan.cpp
     tests/test_config.cpp
     tests/test_upgrade_engine.cpp
 
@@ -172,6 +178,9 @@ add_executable(cd-debugtool-tests
 
     src/protocol/shandong/ShanDongProtocol.cpp
     src/protocol/shandong/ShanDongProtocol.h
+
+    src/protocol/yunnan/YunNanProtocol.cpp
+    src/protocol/yunnan/YunNanProtocol.h
 )
 
 target_link_libraries(cd-debugtool-tests PRIVATE Qt5::Core Qt5::Test)

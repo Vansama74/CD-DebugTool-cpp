@@ -1,13 +1,14 @@
 # CD DebugTool
 
-创迪科技多协议调试工具（C++ / Qt 5.15 版）。一个程序整合六套设备调试协议，平级切换，共享串口 / 网络连接与日志面板。
+创迪科技多协议调试工具（C++ / Qt 5.15 版）。一个程序整合七套设备调试协议，平级切换，共享串口 / 网络连接与日志面板。
 
 > 本仓库是旧 Python（PySide6）版 `indicator-debug-tool` 的 C++ 重写，功能对齐并修复了两个既有 bug（见文末「历史修复」）。
 
 ## 功能
 
-- **六协议平级**：启动时按协议全名选择，主窗口顶部下拉可随时切换。
+- **七协议平级**：启动时按协议全名选择，主窗口顶部下拉可随时切换。
   - **青海高速费显协议**（qinghai）— 全彩费显屏，帧 `7B cmd len data 7D`
+  - **云南费显协议**（yunnan）— 云南LED费显P5（协议版本 YN_FX_P5_1.0），帧 `{ cmd len data }`，13 命令：查询/自检/单行/全屏可编辑/清屏/语音/亮度/音量/外设/费额语音/全屏点亮（设备扩展七色 01红~07白）/版本号
   - **IAP 远程升级**（iap）— 设备扫描 / 固件下发 / 远程升级（支持串口 + UDP）
   - **重庆创迪车道指示器**（rs485）— 显示状态 / 亮度 / DAC 系数 / 波特率等
   - **四川 ETC 费显协议**（sichuan_etc）— 静态/滚屏显示、灯控、亮度、心跳，帧 `0A ... 0D`
@@ -54,7 +55,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-84 项单元测试，覆盖 RS485 帧 / IAP 帧与 CRC32(MPEG-2) / 青海协议帧与解析，四川 ETC / MTC / 治超屏三个协议的帧拼接、BCC 校验与应答解析，以及配置持久化往返（ConfigManager）与升级引擎取消路径聚合（UpgradeEngine）。
+92 项单元测试，覆盖 RS485 帧 / IAP 帧与 CRC32(MPEG-2) / 青海协议帧与解析、云南协议帧与解析（13 命令帧拼接、查询/版本号应答解析），四川 ETC / MTC / 治超屏三个协议的帧拼接、BCC 校验与应答解析，以及配置持久化往返（ConfigManager）与升级引擎取消路径聚合（UpgradeEngine）。
 
 ## 打包
 
@@ -99,7 +100,7 @@ sudo dpkg -i /tmp/cd-debugtool_1.0.0_amd64.deb
 src/
   core/      协议抽象（IProtocolPage / ProtocolRegistry / DeviceManager / UpgradeEngine）
   transport/ 串口 / UDP 传输（串口运行于独立线程）
-  protocol/  六协议帧定义与解析（qinghai / iap / rs485 / sichuan_etc / sichuan_mtc / sichuan_ol）
+  protocol/  七协议帧定义与解析（qinghai / yunnan / iap / rs485 / sichuan_etc / sichuan_mtc / sichuan_ol / shandong）
   ui/        主窗口、登录选择、协议页（串口协议页基类 SerialProtocolPage）、共享控件
   config/    配置持久化（QJson，无第三方依赖）
 tests/       单元测试
@@ -114,6 +115,10 @@ dist/        Windows exe 交付
 ### 青海高速费显（qinghai）
 
 帧封套 `0x7B | cmd(ASCII) | len(二进制字节) | data | 0x7D`，无校验。仅 `'1'`（查询）有应答 `7B 31 01 00 7D`（`0x00` 正常）。文本用 GBK。命令：`1` 查询 / `2` 自检 / `3` 单行 / `4` 全屏 / `5` 清屏 / `6` 固定显示 / `7` 文明语音(0–3) / `8` 亮度 / `9` 音量 / `A` 外设(位掩码) / `B` 费额语音(单位为分)。
+
+### 云南费显（yunnan，协议版本 YN_FX_P5_1.0）
+
+帧 `{ cmd len data }`（`0x7B … 0x7D`），无校验，串口 9600~115200 默认 9600、8N1。文本 GBK（GB2312）。命令：`'1'` 查询（应答 `7B 31 01 00 7D`，设备恒回正常）/ `'2'` 自检 / `'3'` 单行显示（颜色'0'~'2' + 行号'1'~'5' + 文本）/ `'4'` 全屏可编辑（颜色 + X + Y + 文本）/ `'5'` 全屏清除 / `'6'` 单行清除（行号'1'~'5'）/ `'7'` 礼貌语音('0'~'3') / `'8'` 亮度（**0x00 自动 + ASCII '1'~'8' 手动档**，8 最亮）/ `'9'` 音量('1'~'5') / `'A'` 外设（bit0 绿灯 bit1 红灯 bit2 黄闪）/ `'B'` 费额语音（金额 ASCII 串，0 元不播）。设备侧扩展：`0x01` 全屏点亮七色（01红/02绿/03黄/04蓝/05紫/06青/07白）；`0x02` 获取版本号（`7B 02 01 00 7D`，设备回裸 ASCII PROGRAM_CODE，协议文档约定 YN_FX_P5_1.0）。
 
 ### IAP 远程升级（iap）
 
