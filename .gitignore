@@ -1,2 +1,9 @@
 build/
 .cache/
+
+# 发布产物：可执行文件与安装包不入库，仅保留各平台 README 说明可跟踪
+dist/
+!dist/
+dist/*
+!dist/*/
+!dist/*/README.md

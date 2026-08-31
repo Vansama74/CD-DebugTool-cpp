@@ -2,6 +2,13 @@
 #include <QCoreApplication>
 #include <QFont>
 
+#if defined(Q_OS_WIN) && defined(QT_STATIC)
+// 静态 Qt 构建（Windows 单文件 exe）：导入 Windows 平台插件，
+// 否则静态链接时不会注册 QWindowsIntegrationPlugin，程序启动即退出。
+#include <QtPlugin>
+Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
+#endif
+
 #include "core/ProtocolRegistry.h"
 #include "core/ThemeManager.h"
 #include "ui/LoginDialog.h"

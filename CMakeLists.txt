@@ -45,6 +45,8 @@ set(PROJECT_SOURCES
     src/protocol/iap/IapFrame.h
     src/protocol/iap/IapCommands.cpp
     src/protocol/iap/IapCommands.h
+    src/protocol/iap/IntelHexParser.cpp
+    src/protocol/iap/IntelHexParser.h
 
     src/protocol/qinghai/QingHaiProtocol.cpp
     src/protocol/qinghai/QingHaiProtocol.h
@@ -125,6 +127,16 @@ target_link_libraries(cd-debugtool PRIVATE Qt5::Widgets Qt5::SerialPort Qt5::Net
 
 target_include_directories(cd-debugtool PRIVATE src)
 
+# Windows 静态 Qt 单文件 exe（见 README「Windows 单文件 .exe」配方）：
+# - WIN32_EXECUTABLE：GUI 子系统，双击运行无控制台窗口
+# - Qt5::WinMain：静态链接下由 Qt 提供 WinMain，处理命令行参数
+# - 静态链接 libgcc/libstdc++/libwinpthread，消除对运行时 DLL 的依赖
+if(WIN32)
+    set_target_properties(cd-debugtool PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_libraries(cd-debugtool PRIVATE Qt5::WinMain)
+    target_link_options(cd-debugtool PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+
 install(TARGETS cd-debugtool RUNTIME DESTINATION usr/bin)
 install(FILES resources/icons/cd-debugtool.svg DESTINATION usr/share/icons/hicolor/scalable/apps RENAME cd-debugtool.svg)
 install(FILES debian/cd-debugtool.desktop DESTINATION usr/share/applications)
@@ -136,6 +148,7 @@ add_executable(cd-debugtool-tests
     tests/test_rs485.cpp
     tests/test_crc32.cpp
     tests/test_iap_frame.cpp
+    tests/test_intel_hex.cpp
     tests/test_qinghai.cpp
     tests/test_sc_etc.cpp
     tests/test_sc_mtc.cpp
@@ -144,6 +157,7 @@ add_executable(cd-debugtool-tests
     tests/test_yunnan.cpp
     tests/test_config.cpp
     tests/test_upgrade_engine.cpp
+    tests/test_udp_transport.cpp
 
     src/config/ConfigManager.cpp
     src/config/ConfigManager.h
@@ -151,6 +165,9 @@ add_executable(cd-debugtool-tests
     src/core/UpgradeEngine.cpp
     src/core/UpgradeEngine.h
     src/core/Device.h
+
+    src/transport/UdpTransport.cpp
+    src/transport/UdpTransport.h
 
     src/protocol/rs485/Rs485Frame.cpp
     src/protocol/rs485/Rs485Frame.h
@@ -163,6 +180,8 @@ add_executable(cd-debugtool-tests
     src/protocol/iap/IapFrame.h
     src/protocol/iap/IapCommands.cpp
     src/protocol/iap/IapCommands.h
+    src/protocol/iap/IntelHexParser.cpp
+    src/protocol/iap/IntelHexParser.h
 
     src/protocol/qinghai/QingHaiProtocol.cpp
     src/protocol/qinghai/QingHaiProtocol.h
@@ -183,8 +202,12 @@ add_executable(cd-debugtool-tests
     src/protocol/yunnan/YunNanProtocol.h
 )
 
-target_link_libraries(cd-debugtool-tests PRIVATE Qt5::Core Qt5::Test)
+target_link_libraries(cd-debugtool-tests PRIVATE Qt5::Core Qt5::Network Qt5::Test)
 
 target_include_directories(cd-debugtool-tests PRIVATE src)
+
+# 测试数据 fixture 目录（tests/data/）：objcopy type 02 hex 回归样本等。
+target_compile_definitions(cd-debugtool-tests PRIVATE
+    TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
 add_test(NAME cd-debugtool-tests COMMAND cd-debugtool-tests)
