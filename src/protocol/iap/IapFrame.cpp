@@ -32,10 +32,21 @@ QByteArray IapFrame::buildFrame(quint32 cmd, quint32 seq, const QByteArray& payl
     appendLe32(header, cmd);
     appendLe32(header, payloadLenWords);
 
-    const QByteArray crcData = header + payload;
-    const quint32 crc = Crc32Mpeg2::crc32Mpeg2(crcData);
+    // CRC32(MPEG-2) 按「字流」计算（每个 32-bit word 大端序列化），对齐设备端
+    // STM32F4 硬件 CRC 单元（HAL_CRC_Calculate 逐 word MSB-first 喂入）与
+    // Windows 参考工具（2026年通用远程升级控制软件）硬编码帧字节。
+    // 逐字节直接计算（crc32Mpeg2）结果不同，设备会判 CRC 失败而静默丢弃。
+    QVector<quint32> words;
+    words.reserve(4 + payloadLenWords);
+    words.append(FRAME_MAGIC);
+    words.append(seq);
+    words.append(cmd);
+    words.append(payloadLenWords);
+    for (quint32 i = 0; i < payloadLenWords; ++i)
+        words.append(readLe32(payload, static_cast<int>(i) * 4));
+    const quint32 crc = Crc32Mpeg2::crc32Mpeg2Words(words);
 
-    QByteArray out = crcData;
+    QByteArray out = header + payload;
     appendLe32(out, crc);
     return out;
 }
@@ -74,7 +85,17 @@ bool IapFrame::parseFrame(const QByteArray& data, ParsedFrame* out)
 
     const int crcOffset = HEADER_SIZE_BYTES + static_cast<int>(payloadLen) * 4;
     const quint32 crcRecv = readLe32(data, crcOffset);
-    const quint32 crcCalc = Crc32Mpeg2::crc32Mpeg2(data.left(crcOffset));
+
+    // CRC32(MPEG-2) 按字流计算（与 buildFrame 一致，对齐设备端硬件 CRC）。
+    QVector<quint32> crcWords;
+    crcWords.reserve(4 + payloadLen);
+    crcWords.append(magic);
+    crcWords.append(seq);
+    crcWords.append(cmd);
+    crcWords.append(payloadLen);
+    for (quint32 w : payloadWords)
+        crcWords.append(w);
+    const quint32 crcCalc = Crc32Mpeg2::crc32Mpeg2Words(crcWords);
 
     if (out) {
         out->magic = magic;

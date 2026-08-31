@@ -74,15 +74,19 @@ StatusInfo IapCommands::parseStatusResponse(const QVector<quint32>& words)
     info.fwSize = words[0];
     info.fwCrc = words[1];
 
-    // Firmware version: 8 words -> 32 bytes ASCII, little-endian, null-trimmed.
+    // Firmware version: 8 words -> 32 bytes ASCII。设备端（主固件
+    // app_iap_cmd.c cmd_ReportFirmwareStatus_03 与 Recovery cmd.c）每 word
+    // 按大端构造（ver[4i]<<24 | ver[4i+1]<<16 | ver[4i+2]<<8 | ver[4i+3]），
+    // 与 0x01 的 IP word 构造同构；须按大端拆回字节。旧实现按小端拆导致每组
+    // 4 字符反转（"9K1F3127E2" 显示成 "F1K92 7..." 之类），尾部 NUL 裁剪保留。
     QByteArray versionBytes;
     versionBytes.reserve(32);
     for (int i = 0; i < 8; ++i) {
         const quint32 w = words[2 + i];
-        versionBytes.append(static_cast<char>(w & 0xFFu));
-        versionBytes.append(static_cast<char>((w >> 8) & 0xFFu));
-        versionBytes.append(static_cast<char>((w >> 16) & 0xFFu));
         versionBytes.append(static_cast<char>((w >> 24) & 0xFFu));
+        versionBytes.append(static_cast<char>((w >> 16) & 0xFFu));
+        versionBytes.append(static_cast<char>((w >> 8) & 0xFFu));
+        versionBytes.append(static_cast<char>(w & 0xFFu));
     }
     while (!versionBytes.isEmpty() && versionBytes.endsWith('\0'))
         versionBytes.chop(1);
@@ -91,6 +95,16 @@ StatusInfo IapCommands::parseStatusResponse(const QVector<quint32>& words)
     info.upgradeState = static_cast<int>(words[10]);
     info.valid = true;
     return info;
+}
+
+bool IapCommands::parseSetIpResponse(const QVector<quint32>& words)
+{
+    // 4B02 应答容忍两态：主固件 rtn_cmd02 带 1 word 结果码（0=成功、1=失败，
+    // app_iap_cmd.c cmd_ForceModifyIP_02）；Recovery rtn_cmd02 空载荷 ACK
+    // （cmd.c cmd_ForceModifyIP_02 直接落盘不应答结果码）。
+    if (words.isEmpty())
+        return true;
+    return words[0] == 0;
 }
 
 bool IapCommands::parseEraseResponse(const QVector<quint32>& words)

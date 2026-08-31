@@ -10,7 +10,9 @@
 //   [8..11] cmd
 //   [12..15] payload_len (in words)
 //   [16..]  payload words
-//   CRC32-MPEG2 (LE) over header + payload
+//   CRC32-MPEG2 over the word stream (each 32-bit word serialized BIG-endian),
+//   matching the STM32F4 hardware CRC unit on the device (HAL_CRC_Calculate
+//   feeds each word MSB-first) and the Windows reference tool's frames.
 class IapFrame {
 public:
     static constexpr quint32 FRAME_MAGIC = 0x5A5A5A5Au;
