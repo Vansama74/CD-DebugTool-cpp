@@ -18,6 +18,8 @@ class TestUpgradeEngine : public QObject {
 
 private slots:
     void testLoadFirmwareInfo();
+    void testLoadFirmwareCrc();
+    void testLoadFirmwareIntelHex();
     void testCancelCompletesAggregation();
 };
 
@@ -39,6 +41,60 @@ void TestUpgradeEngine::testLoadFirmwareInfo()
     QCOMPARE(static_cast<int>(info.value(QStringLiteral("sizeWords")).toDouble()), 1024);
     QVERIFY(info.value(QStringLiteral("totalPackets")).toDouble() > 0);
     QVERIFY(info.value(QStringLiteral("crc")).toDouble() > 0);
+}
+
+void TestUpgradeEngine::testLoadFirmwareCrc()
+{
+    // 固件 CRC = 0xFF 填充到 4B 对齐 + crc32Mpeg2Words（word 流大端 MPEG-2），
+    // 与设备 Recovery HAL_CRC_Calculate 及 Java CRC32_OR_MPEG_2(int[]) 一致。
+    // 4B 对齐时填充为空：4096 字节 0xAB → 1024 word 0xABABABAB → 0xAA61A1F3（独立 Python 实现算出）。
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString fwPath = dir.filePath(QStringLiteral("fw.bin"));
+    {
+        QFile f(fwPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray(4096, char(0xAB)));
+    }
+
+    UpgradeEngine engine;
+    const QJsonObject info = engine.loadFirmware(fwPath);
+    QCOMPARE(static_cast<quint32>(info.value(QStringLiteral("crc")).toDouble()),
+             static_cast<quint32>(0xAA61A1F3u));
+}
+
+void TestUpgradeEngine::testLoadFirmwareIntelHex()
+{
+    // Intel HEX 加载：两条数据记录（addr 0 四字节 + addr 4 单字节 0x05）+
+    // EOF。解析后与 .bin 字节流等价：size=5、CRC=0xCCD0E62C——0xFF 填充后
+    // 按小端读出 words {0x04030201, 0xFFFFFF05} 再 crc32Mpeg2Words
+    // （= 设备 Recovery HAL_CRC_Calculate 对该 flash word 流的 CRC）。
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString hexPath = dir.filePath(QStringLiteral("fw.hex"));
+    {
+        QFile f(hexPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        // 校验和：记录 1 sum=0x0E→CC=F2；记录 2 sum=0x0A→CC=F6。
+        f.write(":0400000001020304F2\r\n:0100040005F6\r\n:00000001FF\r\n");
+    }
+
+    UpgradeEngine engine;
+    const QJsonObject info = engine.loadFirmware(hexPath);
+    QVERIFY(!info.isEmpty());
+    QCOMPARE(static_cast<int>(info.value(QStringLiteral("size")).toDouble()), 5);
+    QCOMPARE(static_cast<int>(info.value(QStringLiteral("totalPackets")).toDouble()), 1);
+    QCOMPARE(static_cast<quint32>(info.value(QStringLiteral("crc")).toDouble()),
+             static_cast<quint32>(0xCCD0E62Cu));
+
+    // 坏校验和的 .hex 必须拒绝（返回空 info）。
+    const QString badPath = dir.filePath(QStringLiteral("bad.hex"));
+    {
+        QFile f(badPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(":0400000001020304F3\r\n:00000001FF\r\n");
+    }
+    QVERIFY(engine.loadFirmware(badPath).isEmpty());
 }
 
 void TestUpgradeEngine::testCancelCompletesAggregation()

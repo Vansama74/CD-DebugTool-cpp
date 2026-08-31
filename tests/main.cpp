@@ -5,6 +5,7 @@
 int runTestRs485(int argc, char** argv);
 int runTestCrc32(int argc, char** argv);
 int runTestIapFrame(int argc, char** argv);
+int runTestIntelHex(int argc, char** argv);
 int runTestQingHai(int argc, char** argv);
 int runTestScEtc(int argc, char** argv);
 int runTestScMtc(int argc, char** argv);
@@ -13,6 +14,7 @@ int runTestShanDong(int argc, char** argv);
 int runTestYunNan(int argc, char** argv);
 int runTestConfig(int argc, char** argv);
 int runTestUpgradeEngine(int argc, char** argv);
+int runTestUdpTransport(int argc, char** argv);
 
 int main(int argc, char** argv)
 {
@@ -20,6 +22,7 @@ int main(int argc, char** argv)
     status |= runTestRs485(argc, argv);
     status |= runTestCrc32(argc, argv);
     status |= runTestIapFrame(argc, argv);
+    status |= runTestIntelHex(argc, argv);
     status |= runTestQingHai(argc, argv);
     status |= runTestScEtc(argc, argv);
     status |= runTestScMtc(argc, argv);
@@ -28,5 +31,6 @@ int main(int argc, char** argv)
     status |= runTestYunNan(argc, argv);
     status |= runTestConfig(argc, argv);
     status |= runTestUpgradeEngine(argc, argv);
+    status |= runTestUdpTransport(argc, argv);
     return status;
 }
