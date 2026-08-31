@@ -31,6 +31,9 @@ signals:
     void deviceUpdated(const QString& id);
     void deviceRemoved(const QString& id);
     void logMessage(const QString& msg);
+    // 4B02 setip 应答到达（两态解析后的结果），IapPage 据此提示用户
+    // 「已下发，设备重启后生效」/「下发失败」。
+    void setIpAck(const QString& id, bool ok);
 
 private slots:
     void checkTimeouts();

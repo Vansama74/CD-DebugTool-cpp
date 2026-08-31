@@ -9,6 +9,7 @@
 #include "ui/widgets/ConnectConfigPanel.h"
 #include "ui/widgets/LogPanel.h"
 
+#include <QHostAddress>
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QSplitter>
@@ -46,6 +47,9 @@ IapPage::IapPage(QWidget* parent)
     connect(m_devicePanel, &IapDevicePanel::scanRequested, this, &IapPage::onScan);
     connect(m_devicePanel, &IapDevicePanel::selectAllRequested, this, &IapPage::onSelectAll);
     connect(m_devicePanel, &IapDevicePanel::selectionChanged, this, &IapPage::onSelectionChanged);
+    connect(m_devicePanel, &IapDevicePanel::deviceSelected, this, &IapPage::onDeviceSelected);
+    connect(m_devicePanel, &IapDevicePanel::configApplyRequested, this, &IapPage::onConfigApply);
+    connect(m_devicePanel, &IapDevicePanel::statusQueryRequested, this, &IapPage::onQueryStatus);
 
     // Upgrade panel -> page / engine.
     connect(m_upgradePanel, &IapUpgradePanel::firmwareSelected, this, &IapPage::onFirmwareSelected);
@@ -64,6 +68,7 @@ IapPage::IapPage(QWidget* parent)
     connect(m_deviceMgr, &DeviceManager::deviceRemoved, this, &IapPage::onDeviceRemoved);
     connect(m_deviceMgr, &DeviceManager::logMessage, this,
             [this](const QString& msg) { appendLog(msg, QStringLiteral("INFO")); });
+    connect(m_deviceMgr, &DeviceManager::setIpAck, this, &IapPage::onSetIpAck);
 
     // Upgrade engine -> page.
     connect(m_engine, &UpgradeEngine::logMessage, this,
@@ -136,8 +141,10 @@ void IapPage::bindUdp()
     if (!m_udp)
         return;
     m_udp->start();
-    m_udp->bind(static_cast<quint16>(m_connect->getListenPort()),
-                m_connect->getSelectedNicIp());
+    // bindIp 传空：UdpTransport 恒通配绑定 0.0.0.0（设备 4B01 应答是广播帧，
+    // 绑定具体网卡 IP 会收不到），广播发送覆盖本机所有网卡的所有广播地址
+    // （见 UdpTransport::doSendBroadcast / doBind 注释）。
+    m_udp->bind(static_cast<quint16>(m_connect->getListenPort()), QString());
 }
 
 void IapPage::onSerialOpened(const QString& port, int baud)
@@ -162,6 +169,7 @@ void IapPage::onTransportChanged(int idx)
     if (m_deviceMgr)
         m_deviceMgr->clearAll();
     m_rxBuffer.clear();
+    m_currentDeviceId.clear();
 
     if (m_transport == TransportType::Udp)
         bindUdp();
@@ -203,6 +211,14 @@ void IapPage::onSelectionChanged(const QString& id, bool selected)
         d->selected = selected;
 }
 
+void IapPage::onDeviceSelected(const QString& id)
+{
+    m_currentDeviceId = id;
+    Device* d = m_deviceMgr->getDevice(id);
+    if (d)
+        m_devicePanel->showDeviceConfig(d);
+}
+
 void IapPage::onDeviceAdded(const QString& id)
 {
     Device* d = m_deviceMgr->getDevice(id);
@@ -215,6 +231,10 @@ void IapPage::onDeviceUpdated(const QString& id)
     Device* d = m_deviceMgr->getDevice(id);
     if (d)
         m_devicePanel->updateDevice(d);
+    // 配置区刷新（4B01 重新上线 / 4B03 固件状态应答）：只更新展示标签，
+    // 不清用户正在编辑的输入框。
+    if (d && id == m_currentDeviceId)
+        m_devicePanel->updateDeviceInfo(d);
 }
 
 void IapPage::onDeviceRemoved(const QString& id)
@@ -241,10 +261,20 @@ void IapPage::onStartUpgrade()
     // 不再读取任何 QWidget 成员，避免跨线程访问 UI 控件。
     const TransportType transport = m_transport;
     const quint16 defaultPort =
-        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : 10011);
+        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : IapCommands::IAP_PORT);
     m_engine->setSendFunc([this, transport, defaultPort](const QByteArray& data, Device* device) {
         sendToDevice(data, device, transport, defaultPort);
     });
+    // 广播函数（仅 UDP）：升级前置重启后 worker 用 4B01 广播搜索确认设备
+    // 重新上线（Recovery 应答 rtn_cmd01 广播）。同样在入口处快照，避免
+    // worker 线程触碰 UI 成员；串口模式留空（worker 走固定延时路径）。
+    UpgradeEngine::BroadcastFunc broadcastFunc;
+    if (transport == TransportType::Udp && m_udp) {
+        broadcastFunc = [this, defaultPort](const QByteArray& data) {
+            m_udp->sendBroadcast(data, defaultPort);
+        };
+    }
+    m_engine->setBroadcastFunc(broadcastFunc);
 
     m_upgradePanel->setUpgrading(true);
     m_engine->startUpgrade(devices);
@@ -260,7 +290,7 @@ void IapPage::onReboot()
 {
     const TransportType transport = m_transport;
     const quint16 defaultPort =
-        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : 10011);
+        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : IapCommands::IAP_PORT);
     for (Device* d : m_deviceMgr->getSelectedDevices()) {
         sendToDevice(IapCommands::buildRebootRequest(), d, transport, defaultPort);
         appendLog(QStringLiteral("已发送重启命令到 %1").arg(d->displayName()),
@@ -272,11 +302,93 @@ void IapPage::onRecovery()
 {
     const TransportType transport = m_transport;
     const quint16 defaultPort =
-        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : 10011);
+        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : IapCommands::IAP_PORT);
     for (Device* d : m_deviceMgr->getSelectedDevices()) {
         sendToDevice(IapCommands::buildEnterRecoveryRequest(), d, transport, defaultPort);
         appendLog(QStringLiteral("已发送恢复模式命令到 %1").arg(d->displayName()),
                   QStringLiteral("CMD"));
+    }
+}
+
+Device* IapPage::currentDevice() const
+{
+    if (m_currentDeviceId.isEmpty())
+        return nullptr;
+    return m_deviceMgr->getDevice(m_currentDeviceId);
+}
+
+namespace {
+// IPv4 合法性：QHostAddress 解析为 IPv4 且四段数字均有效（setAddress 对
+// "1.2.3.4" 类字符串返回 true；拒绝 IPv6 / 域名形式）。
+bool isValidIpv4(const QString& text)
+{
+    QHostAddress addr;
+    return addr.setAddress(text.trimmed())
+        && addr.protocol() == QAbstractSocket::IPv4Protocol;
+}
+} // namespace
+
+void IapPage::onConfigApply(const QString& ip, const QString& mask, const QString& gateway,
+                            const QString& portText)
+{
+    Device* d = currentDevice();
+    if (!d) {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先扫描并选择设备"));
+        return;
+    }
+    if (!isValidIpv4(ip) || !isValidIpv4(mask) || !isValidIpv4(gateway)) {
+        QMessageBox::warning(this, QStringLiteral("提示"),
+                             QStringLiteral("IP / 掩码 / 网关格式非法（须为 IPv4 点分十进制）"));
+        return;
+    }
+    bool ok = false;
+    const uint port = portText.toUInt(&ok);
+    if (!ok || port < 1 || port > 65535) {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("端口须为 1~65535"));
+        return;
+    }
+
+    const TransportType transport = m_transport;
+    const quint16 defaultPort =
+        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : IapCommands::IAP_PORT);
+    // 4B02 单播到设备 IP:10011（与 4B06/4B07 一致；主固件 netconn 绑 ANY，
+    // 任意源可收）。应答 rtn_cmd02 经广播回，由 DeviceManager 两态解析后
+    // 触发 setIpAck。
+    sendToDevice(IapCommands::buildSetIpRequest(ip, mask, gateway,
+                                                static_cast<quint16>(port)),
+                 d, transport, defaultPort);
+    appendLog(QStringLiteral("已发送配置下发命令到 %1 (%2/%3/%4/%5)")
+                  .arg(d->displayName(), ip, mask, gateway)
+                  .arg(port),
+              QStringLiteral("CMD"));
+}
+
+void IapPage::onQueryStatus()
+{
+    Device* d = currentDevice();
+    if (!d) {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先扫描并选择设备"));
+        return;
+    }
+    const TransportType transport = m_transport;
+    const quint16 defaultPort =
+        static_cast<quint16>(m_connect ? m_connect->getDevicePort() : IapCommands::IAP_PORT);
+    sendToDevice(IapCommands::buildQueryStatusRequest(), d, transport, defaultPort);
+    appendLog(QStringLiteral("已发送固件状态查询 (4B03) 到 %1").arg(d->displayName()),
+              QStringLiteral("CMD"));
+}
+
+void IapPage::onSetIpAck(const QString& id, bool ok)
+{
+    Q_UNUSED(id);
+    if (ok) {
+        appendLog(QStringLiteral("设备确认配置下发"), QStringLiteral("SUCCESS"));
+        QMessageBox::information(this, QStringLiteral("提示"),
+                                 QStringLiteral("已下发，设备重启后生效，请重新搜索设备"));
+    } else {
+        appendLog(QStringLiteral("设备拒绝配置下发"), QStringLiteral("ERROR"));
+        QMessageBox::warning(this, QStringLiteral("提示"),
+                             QStringLiteral("配置下发失败（设备返回错误结果码）"));
     }
 }
 
@@ -383,8 +495,12 @@ void IapPage::sendToDevice(const QByteArray& data, Device* device, TransportType
 {
     if (transport == TransportType::Udp) {
         if (m_udp) {
-            const quint16 port = device->appPort ? device->appPort : defaultPort;
-            m_udp->sendUnicast(data, device->ip, port);
+            // 单播目标恒为 IAP 口（defaultPort = 连接面板「设备口」，默认
+            // IapCommands::IAP_PORT=10011，与搜索广播同一端口源）。设备 4B01
+            // 应答第 4 word 上报的是 TCP 业务口（9528，存于 Device::appPort），
+            // 仅作 UI 显示/第三方工具连接参考——设备 IAP 协议只监听 10011，
+            // 若把 appPort 用作单播目标，升级/重启/Recovery 帧会发错端口。
+            m_udp->sendUnicast(data, device->ip, defaultPort);
         }
     } else {
         if (m_serial)

@@ -70,12 +70,20 @@ void DeviceManager::addOrUpdateDevice(const Device& device)
         existing.serialPort = device.serialPort;
         existing.baudRate = device.baudRate;
         existing.fwVersion = device.fwVersion;
-        existing.fwSize = device.fwSize;
-        existing.fwCrc = device.fwCrc;
-        existing.upgradeState = device.upgradeState;
+        existing.fwSize.store(device.fwSize.load());
+        existing.fwCrc.store(device.fwCrc.load());
+        existing.upgradeState.store(device.upgradeState.load());
         existing.status.store(device.status.load());
         existing.progress = device.progress;
         existing.selected = device.selected;
+        // 邮箱字段随 update 一起复制（worker 线程轮询这些计数）。
+        existing.enterRecoveryStamp.store(device.enterRecoveryStamp.load());
+        existing.reportIpStamp.store(device.reportIpStamp.load());
+        existing.transferReplyStamp.store(device.transferReplyStamp.load());
+        {
+            std::lock_guard<std::mutex> lock(existing.transferMutex);
+            existing.transferMissList = device.transferMissList;
+        }
         m_lastSeen[device.deviceId] = nowMs();
         emit deviceUpdated(device.deviceId);
     } else {
@@ -96,11 +104,21 @@ void DeviceManager::handleFrame(const IapFrame::ParsedFrame& parsed, const QStri
     if (cmd == IapCommands::RESP_REPORT_IP) {
         const ReportIpInfo info = IapCommands::parseReportIpResponse(payload);
         if (info.valid) {
+            // cmd01 应答由设备广播（源地址 255.255.255.255，见设备端
+            // cmd_SendReData：rtn_cmd01/rtn_cmd02 走广播）。源地址不唯一，
+            // 须以载荷内上报的 IP 作为设备标识；否则多设备回复会互相覆盖、
+            // 后续单播查询（按真实源 IP）也找不到已注册设备。
+            const bool ipUsable = !info.ip.isEmpty() &&
+                                  info.ip != QStringLiteral("0.0.0.0");
+            const QString id = (transport == TransportType::Udp && ipUsable)
+                                   ? info.ip
+                                   : srcId;
+            Device* existing = getDevice(id);
             Device d;
-            if (dev) {
-                d = *dev; // preserve firmware info / selection on update
+            if (existing) {
+                d = *existing; // preserve firmware info / selection on update
             } else {
-                d.deviceId = srcId;
+                d.deviceId = id;
                 d.transport = transport;
                 if (transport == TransportType::Serial)
                     d.serialPort = srcId;
@@ -111,15 +129,20 @@ void DeviceManager::handleFrame(const IapFrame::ParsedFrame& parsed, const QStri
             d.appPort = info.appPort;
             d.status.store(DeviceStatus::Online);
             addOrUpdateDevice(d);
+            m_lastSeen[id] = nowMs();
+            // 4B01 应答 = 设备重新上线证据（升级前置重启后 Recovery 重新
+            // 广播应答）。worker 以该计数变化判定「重启完成、可继续 4B04」。
+            if (Device* online = getDevice(id))
+                online->reportIpStamp.fetch_add(1);
         }
     } else if (cmd == IapCommands::RESP_QUERY_STATUS) {
         if (dev) {
             const StatusInfo info = IapCommands::parseStatusResponse(payload);
             if (info.valid) {
                 dev->fwVersion = info.version;
-                dev->fwSize = info.fwSize;
-                dev->fwCrc = info.fwCrc;
-                dev->upgradeState = info.upgradeState;
+                dev->fwSize.store(info.fwSize);
+                dev->fwCrc.store(info.fwCrc);
+                dev->upgradeState.store(info.upgradeState);
 
                 if (dev->status.load() != DeviceStatus::Erasing &&
                     dev->status.load() != DeviceStatus::Transferring) {
@@ -139,6 +162,17 @@ void DeviceManager::handleFrame(const IapFrame::ParsedFrame& parsed, const QStri
                                     .arg(deviceStatusLabel(dev->status.load())));
             }
         }
+    } else if (cmd == IapCommands::RESP_SET_IP) {
+        // 4B02 应答：主固件 rtn_cmd02 带 1 word 结果码（0=成功）、Recovery
+        // 空载荷 ACK。应答与 rtn_cmd01 一样经广播回（cmd_SendReData 对
+        // rtn_cmd01/02 置 255.255.255.255），srcId 为设备真实源 IP。
+        if (dev) {
+            const bool ok = IapCommands::parseSetIpResponse(payload);
+            emit setIpAck(srcId, ok);
+            emit logMessage(ok ? QStringLiteral("[%1] 配置下发成功（设备重启后生效）")
+                                   .arg(dev->displayName())
+                               : QStringLiteral("[%1] 配置下发失败").arg(dev->displayName()));
+        }
     } else if (cmd == IapCommands::RESP_ERASE_FW) {
         if (dev) {
             const bool success = IapCommands::parseEraseResponse(payload);
@@ -154,6 +188,15 @@ void DeviceManager::handleFrame(const IapFrame::ParsedFrame& parsed, const QStri
     } else if (cmd == IapCommands::RESP_TRANSFER_FW) {
         if (dev) {
             const QVector<quint32> badPages = IapCommands::parseTransferResponse(payload);
+            // 末帧应答邮箱：worker 轮询 transferReplyStamp 判定应答到达并读取
+            // 缺失帧索引列表（0-based，空=全部收到）。设备只在「一轮收到的
+            // 帧数达到 max_len」时应答（Recovery cmd.c cmd_SendUpgradePackage_05
+            // 的 frame_cnt 逻辑），故 worker 以整轮 N 帧为单位发送。
+            {
+                std::lock_guard<std::mutex> lock(dev->transferMutex);
+                dev->transferMissList = badPages;
+            }
+            dev->transferReplyStamp.fetch_add(1);
             if (badPages.isEmpty()) {
                 // Bug fix #1b: an empty bad-page list means transfer complete ->
                 // move to Verifying (NOT UpgradeDone).
@@ -168,6 +211,15 @@ void DeviceManager::handleFrame(const IapFrame::ParsedFrame& parsed, const QStri
                                     .arg(badPages.size())
                                     .arg(parts.join(QLatin1Char(','))));
             }
+            emit deviceUpdated(srcId);
+        }
+    } else if (cmd == IapCommands::RESP_ENTER_RECOVERY) {
+        // 主固件 4B06 处理：置 RTC backup FLAG_FORCE_UPDATE 后 ACK len=0
+        // （app_iap_cmd.c cmd_EnterRecoveryMode_06），不重启。worker 以该
+        // 计数确认「设备已确认进入升级模式」，随后才发 4B07 重启。
+        if (dev) {
+            dev->enterRecoveryStamp.fetch_add(1);
+            emit logMessage(QStringLiteral("[%1] 设备已确认进入升级模式").arg(dev->displayName()));
             emit deviceUpdated(srcId);
         }
     }

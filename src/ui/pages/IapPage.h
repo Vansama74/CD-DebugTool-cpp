@@ -33,6 +33,7 @@ private slots:
     void onScan();
     void onSelectAll();
     void onSelectionChanged(const QString& id, bool selected);
+    void onDeviceSelected(const QString& id);
     void onDeviceAdded(const QString& id);
     void onDeviceUpdated(const QString& id);
     void onDeviceRemoved(const QString& id);
@@ -41,6 +42,10 @@ private slots:
     void onCancelUpgrade();
     void onReboot();
     void onRecovery();
+    void onConfigApply(const QString& ip, const QString& mask, const QString& gateway,
+                       const QString& portText);
+    void onQueryStatus();
+    void onSetIpAck(const QString& id, bool ok);
     void onFrameReceived(const QByteArray& data, const QString& srcIp, quint16 srcPort);
     void onBytesReceived(const QByteArray& data);
     void onEngineProgress(const QString& id, double percent, int current, int total);
@@ -57,6 +62,8 @@ private:
     void appendLog(const QString& msg, const QString& level = QStringLiteral("INFO"));
     void handleParsedFrame(const IapFrame::ParsedFrame& parsed, const QString& srcId,
                            TransportType transport);
+    // 当前「配置区」操作的设备（设备列表 currentItem，非勾选集合）。
+    Device* currentDevice() const;
 
     ConnectConfigPanel* m_connect = nullptr;
     IapDevicePanel* m_devicePanel = nullptr;
@@ -67,4 +74,5 @@ private:
     UdpTransport* m_udp = nullptr;
     QByteArray m_rxBuffer;
     TransportType m_transport = TransportType::Udp;
+    QString m_currentDeviceId;
 };
